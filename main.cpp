@@ -3,9 +3,8 @@
 #include <cctype>
 #include <algorithm>
 
-#include <raylib.h>
-
 #define WIN32_LEAN_AND_MEAN
+#define STRICT
 #include <windows.h>
 
 #if defined(_WIN32)
@@ -14,7 +13,10 @@
     #undef ShowCursor
     #undef DrawText
     #undef DrawTextEx
+    #undef LoadImage
 #endif
+
+#include "raylib_wrapper.h"
 
 #include "./resources/zain_black.h"
 #include "./resources/zain_bold.h"
@@ -24,6 +26,7 @@ using namespace std;
 
 Color HexToColor(const string& hex);
 float Clamp(float value, float min, float max);
+unsigned char HexByte(const char* hex); 
 
 int main() {
     const int NATIVE_WIDTH = 2400;
@@ -48,7 +51,7 @@ int main() {
 
     if (zainBlack.texture.id == 0 || zainBold.texture.id == 0 || zainRegular.texture.id == 0) {
         std::cerr << "ERROR: font loading incomplete" << std::endl;
-        CloseWindow();
+        RaylibCloseWindow();
         return 1;
     }
 
@@ -63,9 +66,18 @@ int main() {
         ClearBackground(HexToColor(BACKGROUND_HEX));
         DrawRectangle(0, 0, 2400, 96, HexToColor(PRIMARY_HEX));
         DrawRectangle(960, 96, 480, 80, HexToColor(PRIMARY_HEX));
-        DrawRectanglePro((struct Rectangle){960, 136, 96, 80}, (Vector2){96, 40}, 45, HexToColor(PRIMARY_HEX));
+        
+ 
+        RaylibRectangle rect1 = {960, 136, 96, 80};
+        Vector2 origin1 = {96, 40};
+        DrawRectanglePro(rect1, origin1, 45, HexToColor(PRIMARY_HEX));
+        
         DrawCircleSector((Vector2){960, 136}, 40, 90, 135, 32, HexToColor(PRIMARY_HEX));
-        DrawRectanglePro((struct Rectangle){1440, 136, 96, 80}, (Vector2){96, 40}, 135, HexToColor(PRIMARY_HEX));
+        
+        RaylibRectangle rect2 = {1440, 136, 96, 80};
+        Vector2 origin2 = {96, 40};
+        DrawRectanglePro(rect2, origin2, 135, HexToColor(PRIMARY_HEX));
+        
         DrawCircleSector((Vector2){1440, 136}, 40, 45, 90, 32, HexToColor(PRIMARY_HEX));
         DrawCircleSector((Vector2){864, 96}, 40, 45, 180, 32, HexToColor(PRIMARY_HEX));
         DrawCircleSector((Vector2){832, 176}, 80, 180, 360, 32, HexToColor(BACKGROUND_HEX));
@@ -80,7 +92,7 @@ int main() {
     HWND robloxHwnd = FindWindowA(NULL, "Roblox");
     if (!robloxHwnd) {
         std::cerr << "ERROR: Roblox window not found" << std::endl;
-        CloseWindow();
+        RaylibCloseWindow();
         return 1;
     }
 
@@ -107,13 +119,13 @@ int main() {
 
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             float scale = windowSize.x / (float)WINDOW_WIDTH;
-            struct Rectangle handle = {
+            RaylibRectangle handle = {
                 windowSize.x - (float)HANDLE_SIZE,
                 windowSize.y - (float)HANDLE_SIZE,
                 (float)HANDLE_SIZE,
                 (float)HANDLE_SIZE
             };
-            struct Rectangle topBar = {0, 0, windowSize.x, TOP_BAR_HEIGHT * scale};
+            RaylibRectangle topBar = {0, 0, windowSize.x, TOP_BAR_HEIGHT * scale};
 
             if (CheckCollisionPointRec(mousePositionInWindow, handle)) {
                 draggingResize = true;
@@ -197,21 +209,28 @@ int main() {
             BeginTextureMode(windowTexture);
                 ClearBackground(BLACK);
 
-                struct Rectangle src = {0, 0, (float)width, (float)height};
-                struct Rectangle dst = {offsetX, topBarHeight, scaledWidth, scaledHeight};
+                RaylibRectangle src = {0, 0, (float)width, (float)height};
+                RaylibRectangle dst = {offsetX, topBarHeight, scaledWidth, scaledHeight};
                 DrawTexturePro(robloxTexture, src, dst, (Vector2){0, 0}, 0.0f, WHITE);
 
-                struct Rectangle srcUI = {0.0f, 0.0f, (float)structureTexture.texture.width, -(float)structureTexture.texture.height};
-                struct Rectangle dstUI = {0, 0, windowSize.x, windowSize.y};
+                RaylibRectangle srcUI = {0.0f, 0.0f, (float)structureTexture.texture.width, -(float)structureTexture.texture.height};
+                RaylibRectangle dstUI = {0, 0, windowSize.x, windowSize.y};
                 DrawTexturePro(structureTexture.texture, srcUI, dstUI, (Vector2){0, 0}, 0.0f, WHITE);
-                DrawRectangle(windowSize.x - (float)HANDLE_SIZE, windowSize.y - (float)HANDLE_SIZE, (float)HANDLE_SIZE, (float)HANDLE_SIZE, GRAY);
+                
+                RaylibRectangle handleRect = {windowSize.x - (float)HANDLE_SIZE, windowSize.y - (float)HANDLE_SIZE, (float)HANDLE_SIZE, (float)HANDLE_SIZE};
+                DrawRectangleRec(handleRect, GRAY);
             EndTextureMode();
         }
 
         BeginDrawing();
             ClearBackground(BLACK);
-            DrawRectangleRounded((struct Rectangle){0, 0, windowSize.x, windowSize.y}, CORNER_RADIUS / WINDOW_WIDTH * windowSize.x / 2.0f, 16, BLACK);
-            DrawTexturePro(windowTexture.texture, (struct Rectangle){0, 0, (float)windowTexture.texture.width, -(float)windowTexture.texture.height}, (struct Rectangle){0, 0, windowSize.x, windowSize.y}, (Vector2){0, 0}, 0.0f, WHITE);
+            RaylibRectangle windowRect = {0, 0, windowSize.x, windowSize.y};
+            DrawRectangleRounded(windowRect, CORNER_RADIUS / WINDOW_WIDTH * windowSize.x / 2.0f, 16, BLACK);
+            
+            RaylibRectangle srcWindow = {0, 0, (float)windowTexture.texture.width, -(float)windowTexture.texture.height};
+            RaylibRectangle dstWindow = {0, 0, windowSize.x, windowSize.y};
+            DrawTexturePro(windowTexture.texture, srcWindow, dstWindow, (Vector2){0, 0}, 0.0f, WHITE);
+            
             DrawText(TextFormat("FPS: %i", GetFPS()), 10, 10, 20, GREEN);
         EndDrawing();
     }
@@ -227,7 +246,7 @@ int main() {
     UnloadFont(zainRegular);
     UnloadRenderTexture(structureTexture);
     UnloadRenderTexture(windowTexture);
-    CloseWindow();
+    RaylibCloseWindow();
     return 0;
 }
 
