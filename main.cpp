@@ -252,7 +252,7 @@ int main() {
             }
             
             // ui elements that overlay on top of video
-            DrawRectangleGradientV(0, 96 * structureScale, windowSize.x, 100 * structureScale, HexToColor(BACKGROUND_HEX), HexToColor("#1B1E2400"));
+            DrawRectangleGradientV(0, 112 * structureScale, windowSize.x, 100 * structureScale, HexToColor(BACKGROUND_HEX), HexToColor("#1B1E2400"));
             DrawRectanglePro((Rectangle){960 * structureScale, 96 * structureScale, 480 * structureScale, 80 * structureScale}, (Vector2){0, 0}, 0.0f, HexToColor(PRIMARY_HEX));
             DrawRectanglePro((Rectangle){960 * structureScale, 136 * structureScale, 96 * structureScale, 80 * structureScale}, (Vector2){96 * structureScale, 40 * structureScale}, 45, HexToColor(PRIMARY_HEX));
             DrawRectanglePro((Rectangle){1440 * structureScale, 136 * structureScale, 96 * structureScale, 80 * structureScale}, (Vector2){96 * structureScale, 40 * structureScale}, 135, HexToColor(PRIMARY_HEX));
