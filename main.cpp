@@ -72,7 +72,6 @@ extern "C" {
 #include <raylib.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc.hpp>
-#include <iostream>
 #include <string>
 #include <cctype>
 #include <algorithm>
@@ -109,34 +108,41 @@ int main() {
     const int WINDOW_WIDTH = 600;
     const int WINDOW_HEIGHT = 300;
     const int MAX_FPS = 60;
+    const int CLIENT_REFRESH_FRAME_WAIT = 300;
     const string BACKGROUND_HEX = "#1B1E24";
     const string PRIMARY_HEX = "#272A33";
     const int HANDLE_SIZE = 20;
     const float MIN_WIDTH = 300.0f;
     const float MAX_WIDTH = 1920.0f;
     const float TOP_BAR_HEIGHT = 24.0f;
-    const float CORNER_RADIUS = 10.0f;
     const float SLIDER_MIN_SCALE = 0.5f; 
     const float SLIDER_MAX_SCALE = 3.0f;
     const float SLIDER_TRACK_LENGTH = 800.0f;
     const float SLIDER_HANDLE_WIDTH = 10.0f;
+    
+    bool TOGGLE_PRESSED = false;
+
+    static bool timerRunning = false;
+    static bool wasTogglePressed = false;
+    static float startTime = 0.0f;
+    static float stopTime = 0.0f;
+
 
     // initialize screen capture
     ScreenCapture screenCap;
     if (!screenCap.Initialize()) {
-        std::cerr << "failed to initialize screen capture" << std::endl;
-        return -1;
+        // continue instead of quitting
     }
 
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED);
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "autoFish");
+    SetTraceLogLevel(LOG_NONE);
     SetTargetFPS(MAX_FPS);
 
     // load embedded fonts
     Font zainBlack = LoadFontFromMemory(".ttf", zain_black_data, zain_black_data_size, 100, nullptr, 0);
     Font zainRegular = LoadFontFromMemory(".ttf", zain_regular_data, zain_regular_data_size, 100, nullptr, 0);
     if (zainBlack.texture.id == 0 || zainRegular.texture.id == 0) {
-        std::cerr << "ERROR: font loading incomplete" << std::endl;
         CloseWindow();
         return 1;
     }
@@ -161,18 +167,17 @@ int main() {
     bool draggingRightSlider = false;
 
     int frameCount = 0;
-    const int SCREEN_CAPTURE_INTERVAL = 2;
 
     while (!WindowShouldClose()) {
+        float structureScale = windowSize.x / (float)NATIVE_WIDTH;
+
         Vector2 mousePositionInWindow = GetMousePosition();
         Vector2 currentWindowPos = GetWindowPosition();
         Vector2 absoluteMousePosition = {
             currentWindowPos.x + mousePositionInWindow.x,
             currentWindowPos.y + mousePositionInWindow.y
-        };
-
-        float structureScale = windowSize.x / (float)NATIVE_WIDTH;
-
+        };  
+             
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             float scale = windowSize.x / (float)WINDOW_WIDTH;
             Rectangle handle = {windowSize.x - (float)HANDLE_SIZE, windowSize.y - (float)HANDLE_SIZE, (float)HANDLE_SIZE, (float)HANDLE_SIZE};
@@ -216,6 +221,22 @@ int main() {
                 dragOffsetToWindow.x = absoluteMousePosition.x - currentWindowPos.x;
                 dragOffsetToWindow.y = absoluteMousePosition.y - currentWindowPos.y;
             }
+
+            if (CheckCollisionPointCircle(mousePositionInWindow, (Vector2){1200 * structureScale, 950 * structureScale}, 160.0f * structureScale)) {
+                TOGGLE_PRESSED = !TOGGLE_PRESSED;
+                
+                if (TOGGLE_PRESSED != wasTogglePressed) {
+                    if (TOGGLE_PRESSED) {
+                      
+                        timerRunning = true;
+                        startTime = GetTime();
+                    } else {                  
+                        timerRunning = false;
+                        stopTime = GetTime();
+                    }
+                    wasTogglePressed = TOGGLE_PRESSED;
+                }
+            }
         }
         
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
@@ -256,21 +277,20 @@ int main() {
             SetWindowPosition((int)(absoluteMousePosition.x - dragOffsetToWindow.x), (int)(absoluteMousePosition.y - dragOffsetToWindow.y));
         }
 
-        // capture screen periodically
-        frameCount++;
-        if (frameCount % SCREEN_CAPTURE_INTERVAL == 0) {
-            cv::Mat screenMat = screenCap.CaptureScreen();
-            if (!screenMat.empty()) {
-                Image screenImg = MatToRaylibImage(screenMat);
-                if (screenImg.data) {
-                    if (textureLoaded) {
-                        UnloadTexture(screenTexture);
-                    }
-                    screenTexture = LoadTextureFromImage(screenImg);
-                    textureLoaded = true;
-                    UnloadImage(screenImg);
+        // capture screen
+        cv::Mat screenMat = screenCap.CaptureScreen();
+        if (!screenMat.empty()) {
+            Image screenImg = MatToRaylibImage(screenMat);
+            if (screenImg.data) {
+                if (textureLoaded) {
+                    UnloadTexture(screenTexture);
                 }
+                screenTexture = LoadTextureFromImage(screenImg);
+                textureLoaded = true;
+                UnloadImage(screenImg);
             }
+        } else {
+            textureLoaded = false;
         }
 
         float scale = windowSize.x / (float)WINDOW_WIDTH;
@@ -289,15 +309,14 @@ int main() {
             DrawCircleSector((Vector2){832 * structureScale, 176 * structureScale}, 80 * structureScale, 180, 360, 32, HexToColor(BACKGROUND_HEX));
             DrawCircleSector((Vector2){1568 * structureScale, 176 * structureScale}, 80 * structureScale, 180, 360, 32, HexToColor(BACKGROUND_HEX));
             
-            // draw captured video
-            if (textureLoaded) {
-                float videoX = 0;
-                float videoY = 114.0f * structureScale;
-                float videoWidth = NATIVE_WIDTH * structureScale;
-                float videoHeight = 600.0f * structureScale;
-                
-                BeginScissorMode((int)videoX, (int)videoY, (int)videoWidth, (int)videoHeight);  
-                         
+            // draw captured video or error message
+            float videoX = 0;
+            float videoY = 114.0f * structureScale;
+            float videoWidth = NATIVE_WIDTH * structureScale;
+            float videoHeight = 600.0f * structureScale;
+            
+            BeginScissorMode((int)videoX, (int)videoY, (int)videoWidth, (int)videoHeight);  
+            if (textureLoaded) {                
                 float baseScaleX = videoWidth / screenTexture.width;
                 float baseScaleY = videoHeight / screenTexture.height;
                 float baseMinScale = fmaxf(baseScaleX, baseScaleY);
@@ -322,12 +341,25 @@ int main() {
                 Rectangle videoSrc = {0.0f, 0.0f, (float)screenTexture.width, (float)screenTexture.height};
                 Rectangle videoDst = {centerX, centerY, scaledWidth, scaledHeight};
                 DrawTexturePro(screenTexture, videoSrc, videoDst, (Vector2){0, 0}, 0.0f, WHITE);
+                DrawRectangleGradientV(0, 112 * structureScale, windowSize.x, 100 * structureScale, HexToColor(BACKGROUND_HEX), HexToColor("#1B1E2400"));
+            } else {            
+                const char* errorText = "roblox player not detected";
+                float fontSize = 200 * structureScale;
+                Vector2 textSize = MeasureTextEx(zainBlack, errorText, fontSize, 1.0f);
+                float textX = videoX + (videoWidth - textSize.x) * 0.5f;
+                float textY = videoY + (videoHeight - textSize.y) * 0.5f;
+                DrawTextEx(zainBlack, errorText, (Vector2){textX, textY}, fontSize, 1.0f, HexToColor("#111417"));
                 
-                EndScissorMode();
+                if (frameCount >= CLIENT_REFRESH_FRAME_WAIT) {
+                    screenCap.Initialize();
+                    frameCount = 0;
+                }
+                frameCount++;
             }
+            EndScissorMode();
             
             // draw ui overlays
-            DrawRectangleGradientV(0, 112 * structureScale, windowSize.x, 100 * structureScale, HexToColor(BACKGROUND_HEX), HexToColor("#1B1E2400"));
+            
             DrawRectanglePro((Rectangle){960 * structureScale, 96 * structureScale, 480 * structureScale, 80 * structureScale}, (Vector2){0, 0}, 0.0f, HexToColor(PRIMARY_HEX));
             DrawRectanglePro((Rectangle){0, 714 * structureScale, windowSize.x, 10 * structureScale}, (Vector2){0, 0}, 0.0f, HexToColor(PRIMARY_HEX));
             DrawRectanglePro((Rectangle){960 * structureScale, 136 * structureScale, 96 * structureScale, 80 * structureScale}, (Vector2){96 * structureScale, 40 * structureScale}, 45, HexToColor(PRIMARY_HEX));
@@ -342,7 +374,10 @@ int main() {
             // left slider track
             float leftTrackStart = 40 * structureScale;
             DrawRectanglePro((Rectangle){leftTrackStart, 950 * structureScale, SLIDER_TRACK_LENGTH * structureScale, 12 * structureScale}, (Vector2){0, 6 * structureScale}, 0.0f, HexToColor("#111417"));
-            
+            DrawTextEx(zainBlack, "move", (Vector2){leftTrackStart, 820 * structureScale}, 100 * structureScale, 1.0f, HexToColor("#C6D2E0"));
+            DrawTextEx(zainBlack, "up", (Vector2){leftTrackStart, 960 * structureScale}, 80 * structureScale, 1.0f, HexToColor("#0A0C0F"));
+            DrawTextEx(zainBlack, "down", (Vector2){leftTrackStart + SLIDER_TRACK_LENGTH * structureScale - MeasureTextEx(zainBlack, "down", 80 * structureScale, 1.0f).x, 960 * structureScale}, 80 * structureScale, 1.0f, HexToColor("#0A0C0F"));
+
             // left slider handle
             float movableLeftTrackLength = SLIDER_TRACK_LENGTH * structureScale - SLIDER_HANDLE_WIDTH * structureScale;
             float leftSliderProgress = (videoOffsetY + 1.0f) * 0.5f;
@@ -353,6 +388,9 @@ int main() {
             // right slider track
             float rightTrackStart = 1560 * structureScale;
             DrawRectanglePro((Rectangle){rightTrackStart, 950 * structureScale, SLIDER_TRACK_LENGTH * structureScale, 12 * structureScale}, (Vector2){0, 6 * structureScale}, 0.0f, HexToColor("#111417"));
+            DrawTextEx(zainBlack, "zoom", (Vector2){rightTrackStart + SLIDER_TRACK_LENGTH * structureScale - MeasureTextEx(zainBlack, "zoom", 100 * structureScale, 1.0f).x, 820 * structureScale}, 100 * structureScale, 1.0f, HexToColor("#C6D2E0"));
+            DrawTextEx(zainBlack, "out", (Vector2){rightTrackStart, 960 * structureScale}, 80 * structureScale, 1.0f, HexToColor("#0A0C0F"));
+            DrawTextEx(zainBlack, "in", (Vector2){rightTrackStart + SLIDER_TRACK_LENGTH * structureScale - MeasureTextEx(zainBlack, "in", 80 * structureScale, 1.0f).x, 960 * structureScale}, 80 * structureScale, 1.0f, HexToColor("#0A0C0F"));
 
             // right slider handle
             float movableRightTrackLength = SLIDER_TRACK_LENGTH * structureScale - SLIDER_HANDLE_WIDTH * structureScale;
@@ -363,12 +401,42 @@ int main() {
             DrawRectanglePro((Rectangle){rightSliderX, rightSliderY, SLIDER_HANDLE_WIDTH * structureScale, 40 * structureScale}, (Vector2){0, 20 * structureScale}, 0.0f, HexToColor("#DFE8F5"));
             
             // toggle button
-            DrawCircleSector((Vector2){1200 * structureScale, 950 * structureScale}, 140.0f * structureScale, 0.0f, 360.0f, 40, HexToColor("#DFE8F5"));
+            DrawCircleSector((Vector2){1200 * structureScale, 950 * structureScale}, 160.0f * structureScale, 0.0f, 360.0f, 100, HexToColor("#3C4151"));
+            DrawRing((Vector2){1200 * structureScale, 950 * structureScale}, 136.0f * structureScale, 142.0f * structureScale, 0.0f, 360.0f, 100, HexToColor("#7380A7"));
+            DrawRing((Vector2){1200 * structureScale, 950 * structureScale}, 100.0f * structureScale, 120.0f * structureScale, 45.0f, 135.0f, 40, HexToColor(TOGGLE_PRESSED ? "#6B8FFA" : "#2C3347"));
+
+            const char* buttonText = TOGGLE_PRESSED ? "STOP" : "START";
+            float fontSize = 100 * structureScale; 
+            Vector2 textSize = MeasureTextEx(zainBlack, buttonText, fontSize, 1.0f);
+            float textX = (1200 * structureScale) - (textSize.x * 0.5f); 
+            float textY = (950 * structureScale) - (textSize.y * 0.5f); 
+            DrawTextEx(zainBlack, buttonText, (Vector2){textX, textY}, fontSize, 1.0f, WHITE);
+            
+            // counter text
+            float currentTime = 0.0f;
+            if (timerRunning) {
+                currentTime = GetTime() - startTime;
+            } else if (stopTime > 0) {
+          
+                currentTime = stopTime - startTime;
+            }       
+
+            int totalSeconds = (int)currentTime;
+            int minutes = totalSeconds / 60;
+            int seconds = totalSeconds % 60;
+
+            const char* timerText = TextFormat("%d:%02d", minutes, seconds);
+            float timerFontSize = 120 * structureScale;
+            Vector2 timerTextSize = MeasureTextEx(zainRegular, timerText, timerFontSize, 1.0f);
+            float timerTextX = (windowSize.x - timerTextSize.x) * 0.5f;
+            float timerTextY = 30 * structureScale;
+
+            DrawTextEx(zainBlack, timerText, (Vector2){timerTextX, timerTextY}, timerFontSize, 1.0f, WHITE);
+
         EndTextureMode();
 
         BeginDrawing();
-            ClearBackground(BLACK);
-            DrawRectangleRounded((Rectangle){0, 0, windowSize.x, windowSize.y}, CORNER_RADIUS * scale / 2.0f, 16, BLACK);
+            ClearBackground(BLACK);           
             DrawTexturePro(windowTexture.texture, (Rectangle){0, 0, (float)windowTexture.texture.width, -(float)windowTexture.texture.height}, (Rectangle){0, 0, windowSize.x, windowSize.y}, (Vector2){0, 0}, 0.0f, WHITE);
             DrawTextEx(zainRegular, TextFormat("FPS: %i", GetFPS()), (Vector2){10, 50}, 20 * scale, 1.0f, GREEN);
         EndDrawing();
@@ -438,38 +506,32 @@ struct WindowsScreenCapture {
     bool Initialize() {
         hwndRoblox = FindWindowA(NULL, "Roblox");
         if (!hwndRoblox) {
-            std::cerr << "Failed to find Roblox window" << std::endl;
             return false;
         }
 
         RECT clientRect;
         if (!GetClientRect(hwndRoblox, &clientRect)) {
-            std::cerr << "Failed to get Roblox window dimensions" << std::endl;
             return false;
         }
         captureWidth = clientRect.right - clientRect.left;
         captureHeight = clientRect.bottom - clientRect.top;
 
         if (captureWidth <= 0 || captureHeight <= 0) {
-            std::cerr << "Invalid Roblox window dimensions: " << captureWidth << "x" << captureHeight << std::endl;
             return false;
         }
 
         hdcScreen = GetDC(hwndRoblox);
         if (!hdcScreen) {
-            std::cerr << "Failed to get Roblox window DC" << std::endl;
             return false;
         }
 
         hdcMemDC = CreateCompatibleDC(hdcScreen);
         if (!hdcMemDC) {
-            std::cerr << "Failed to create memory DC" << std::endl;
             ReleaseDC(hwndRoblox, hdcScreen);
             return false;
         }
         hbmScreen = CreateCompatibleBitmap(hdcScreen, captureWidth, captureHeight);
         if (!hbmScreen) {
-            std::cerr << "Failed to create bitmap" << std::endl;
             DeleteDC(hdcMemDC);
             ReleaseDC(hwndRoblox, hdcScreen);
             return false;
@@ -478,24 +540,20 @@ struct WindowsScreenCapture {
         GetObjectA(hbmScreen, sizeof(BITMAP), &bmpScreen);
         screenMat = cv::Mat::zeros(captureHeight, captureWidth, CV_8UC4);
 
-        std::cout << "Roblox capture initialized: " << captureWidth << "x" << captureHeight << std::endl;
         return true;
     }
 
     cv::Mat CaptureScreen() {
         if (!hwndRoblox || !hdcScreen || !hdcMemDC || !hbmScreen) {
-            std::cerr << "Screen capture not initialized or Roblox window not found" << std::endl;
             return cv::Mat();
         }
 
         if (!IsWindow(hwndRoblox)) {
-            std::cerr << "Roblox window no longer exists" << std::endl;
             return cv::Mat();
         }
 
         RECT clientRect;
         if (!GetClientRect(hwndRoblox, &clientRect)) {
-            std::cerr << "Failed to get Roblox window dimensions" << std::endl;
             return cv::Mat();
         }
         int width = clientRect.right - clientRect.left;
@@ -508,12 +566,10 @@ struct WindowsScreenCapture {
             DeleteDC(hdcMemDC);
             hbmScreen = CreateCompatibleBitmap(hdcScreen, captureWidth, captureHeight);
             if (!hbmScreen) {
-                std::cerr << "Failed to recreate bitmap" << std::endl;
                 return cv::Mat();
             }
             hdcMemDC = CreateCompatibleDC(hdcScreen);
             if (!hdcMemDC) {
-                std::cerr << "Failed to recreate memory DC" << std::endl;
                 DeleteObject(hbmScreen);
                 return cv::Mat();
             }
@@ -525,7 +581,6 @@ struct WindowsScreenCapture {
         WINBOOL bltResult = BitBlt(hdcMemDC, 0, 0, captureWidth, captureHeight,
                                    hdcScreen, 0, 0, SRCCOPY);
         if (!bltResult) {
-            std::cerr << "BitBlt failed" << std::endl;
             return cv::Mat();
         }
 
@@ -540,7 +595,6 @@ struct WindowsScreenCapture {
         int scanlinesCopied = GetDIBits(hdcMemDC, hbmScreen, 0, (unsigned int)captureHeight,
                                         screenMat.data, (BITMAPINFO*)&bi, DIB_RGB_COLORS);
         if (scanlinesCopied == 0) {
-            std::cerr << "GetDIBits failed" << std::endl;
             return cv::Mat();
         }
 
@@ -576,7 +630,6 @@ cv::Mat ScreenCapture::CaptureScreen() {
 ScreenCapture::ScreenCapture() : impl(nullptr) {}
 ScreenCapture::~ScreenCapture() {}
 bool ScreenCapture::Initialize() {
-    std::cout << "screen capture not implemented for this platform" << std::endl;
     return false;
 }
 
